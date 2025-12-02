@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { taskApi } from '@/api/tasks'
-import { resultApi, type DomainResult, type SubdomainResult, type ResultType } from '@/api/results'
+import { resultApi, type SubdomainResult, type ResultType } from '@/api/results'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -43,13 +43,12 @@ import {
 import { cn, formatDate, getStatusColor } from '@/lib/utils'
 import { 
   ArrowLeft, Play, Pause, Square, Trash2, RotateCcw, 
-  Search, Download, Settings, ChevronDown, Plus,
+  Search, Download, Settings, ChevronDown,
   RefreshCw, ExternalLink, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight
 } from 'lucide-react'
 
 // Tab 配置 - ID 对应后端 ResultType
 const tabConfig = [
-  { id: 'domain', label: '根域名' },
   { id: 'subdomain', label: '子域名' },
   { id: 'takeover', label: '子域名接管' },
   { id: 'app', label: 'APP' },
@@ -59,8 +58,8 @@ const tabConfig = [
   { id: 'sensitive', label: '敏感信息' },
   { id: 'dirscan', label: '目录扫描' },
   { id: 'vuln', label: '漏洞' },
-  { id: 'monitor', label: '页面监控' },
   { id: 'port', label: '端口' },
+  { id: 'service', label: 'Web服务' },
 ]
 
 export default function TaskDetailPage() {
@@ -176,6 +175,15 @@ export default function TaskDetailPage() {
     onError: () => toast({ title: '操作失败', variant: 'destructive' }),
   })
 
+  const rescanMutation = useMutation({
+    mutationFn: (fromScratch: boolean) => taskApi.rescanTask(id!, fromScratch),
+    onSuccess: (_, fromScratch) => {
+      toast({ title: fromScratch ? '任务已从头开始扫描' : '任务已继续扫描' })
+      queryClient.invalidateQueries({ queryKey: ['task', id] })
+    },
+    onError: () => toast({ title: '操作失败', variant: 'destructive' }),
+  })
+
   const deleteMutation = useMutation({
     mutationFn: () => taskApi.deleteTask(id!),
     onSuccess: () => {
@@ -188,7 +196,7 @@ export default function TaskDetailPage() {
   // 计算派生状态
   const isOperating = startMutation.isPending || pauseMutation.isPending || 
     resumeMutation.isPending || cancelMutation.isPending || 
-    retryMutation.isPending || deleteMutation.isPending
+    retryMutation.isPending || deleteMutation.isPending || rescanMutation.isPending
 
   const task = data?.data
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -301,8 +309,6 @@ export default function TaskDetailPage() {
   // 渲染不同类型的表格
   const renderTable = () => {
     switch (currentTab) {
-      case 'domain':
-        return renderDomainTable()
       case 'subdomain':
         return renderSubdomainTable()
       case 'takeover':
@@ -313,6 +319,8 @@ export default function TaskDetailPage() {
         return renderSensitiveTable()
       case 'port':
         return renderPortTable()
+      case 'service':
+        return renderServiceTable()
       case 'dirscan':
         return renderDirScanTable()
       case 'crawler':
@@ -321,79 +329,6 @@ export default function TaskDetailPage() {
         return renderGenericTable()
     }
   }
-
-  const renderDomainTable = () => (
-    <Table>
-      <TableHeader className="sticky top-0 bg-background">
-        <TableRow>
-          <TableHead className="w-12">
-            <Checkbox 
-              checked={selectedRows.length === results.length && results.length > 0}
-              onCheckedChange={toggleSelectAll}
-            />
-          </TableHead>
-          <TableHead className="w-16">序号</TableHead>
-          <TableHead>根域名</TableHead>
-          <TableHead>ICP</TableHead>
-          <TableHead>公司</TableHead>
-          <TableHead>项目</TableHead>
-          <TableHead>TAG</TableHead>
-          <TableHead>时间</TableHead>
-        </TableRow>
-      </TableHeader>
-      <TableBody>
-        {results.length === 0 ? (
-          <TableRow>
-            <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
-              {resultsLoading ? '加载中...' : '暂无数据'}
-            </TableCell>
-          </TableRow>
-        ) : (
-          results.map((item: DomainResult, index: number) => (
-            <TableRow 
-              key={item.id}
-              className={cn(selectedRows.includes(item.id) && 'bg-muted/50')}
-            >
-              <TableCell>
-                <Checkbox 
-                  checked={selectedRows.includes(item.id)}
-                  onCheckedChange={() => toggleSelectRow(item.id)}
-                />
-              </TableCell>
-              <TableCell className="text-muted-foreground">{(page - 1) * pageSize + index + 1}</TableCell>
-              <TableCell>
-                <a 
-                  href={`https://${item.domain}`} 
-                  target="_blank" 
-                  rel="noopener noreferrer"
-                  className="text-primary hover:underline flex items-center gap-1"
-                >
-                  {item.domain}
-                  <ExternalLink className="h-3 w-3" />
-                </a>
-              </TableCell>
-              <TableCell className="text-muted-foreground">{item.icp || '-'}</TableCell>
-              <TableCell>{item.company || '-'}</TableCell>
-              <TableCell>{item.project || '-'}</TableCell>
-              <TableCell>
-                {item.tags?.length > 0 ? (
-                  item.tags.map((tag: string) => (
-                    <Badge key={tag} variant="outline" className="mr-1">{tag}</Badge>
-                  ))
-                ) : (
-                  <Button variant="ghost" size="sm" className="h-6 text-xs">
-                    <Plus className="h-3 w-3 mr-1" />
-                    New Tag
-                  </Button>
-                )}
-              </TableCell>
-              <TableCell className="text-muted-foreground">{formatDate(item.createdAt)}</TableCell>
-            </TableRow>
-          ))
-        )}
-      </TableBody>
-    </Table>
-  )
 
   const renderSubdomainTable = () => (
     <Table>
@@ -631,7 +566,8 @@ export default function TaskDetailPage() {
           <TableHead className="w-16">序号</TableHead>
           <TableHead>URL</TableHead>
           <TableHead>类型</TableHead>
-          <TableHead>值</TableHead>
+          <TableHead>模式</TableHead>
+          <TableHead>匹配内容</TableHead>
           <TableHead>级别</TableHead>
           <TableHead>位置</TableHead>
           <TableHead>时间</TableHead>
@@ -640,7 +576,7 @@ export default function TaskDetailPage() {
       <TableBody>
         {results.length === 0 ? (
           <TableRow>
-            <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
+            <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">
               {resultsLoading ? '加载中...' : '暂无数据'}
             </TableCell>
           </TableRow>
@@ -657,7 +593,7 @@ export default function TaskDetailPage() {
                 />
               </TableCell>
               <TableCell className="text-muted-foreground">{(page - 1) * pageSize + index + 1}</TableCell>
-              <TableCell className="max-w-[300px] truncate">
+              <TableCell className="max-w-[250px] truncate">
                 <a 
                   href={item.url as string} 
                   target="_blank" 
@@ -670,12 +606,18 @@ export default function TaskDetailPage() {
               <TableCell>
                 <Badge variant="outline">{item.type as string}</Badge>
               </TableCell>
-              <TableCell className="font-mono text-xs max-w-[200px] truncate">
-                {item.value as string}
+              <TableCell className="text-muted-foreground">{item.pattern as string}</TableCell>
+              <TableCell className="font-mono text-xs max-w-[200px] truncate" title={Array.isArray(item.matches) ? (item.matches as string[]).join(', ') : ''}>
+                {Array.isArray(item.matches) ? (item.matches as string[]).slice(0, 2).join(', ') : '-'}
+                {Array.isArray(item.matches) && (item.matches as string[]).length > 2 && '...'}
               </TableCell>
               <TableCell>
                 <Badge 
-                  variant={(item.severity as string) === 'high' ? 'destructive' : 'secondary'}
+                  variant={
+                    (item.severity as string) === 'critical' ? 'destructive' :
+                    (item.severity as string) === 'high' ? 'destructive' : 
+                    (item.severity as string) === 'medium' ? 'default' : 'secondary'
+                  }
                 >
                   {item.severity as string}
                 </Badge>
@@ -739,6 +681,88 @@ export default function TaskDetailPage() {
               <TableCell>
                 {(item.fingerprint as string[])?.slice(0, 2).map((fp: string) => (
                   <Badge key={fp} variant="outline" className="mr-1 text-xs">{fp}</Badge>
+                ))}
+              </TableCell>
+              <TableCell className="text-muted-foreground">{formatDate(item.createdAt as string)}</TableCell>
+            </TableRow>
+          ))
+        )}
+      </TableBody>
+    </Table>
+  )
+
+  const renderServiceTable = () => (
+    <Table>
+      <TableHeader className="sticky top-0 bg-background">
+        <TableRow>
+          <TableHead className="w-12">
+            <Checkbox 
+              checked={selectedRows.length === results.length && results.length > 0}
+              onCheckedChange={toggleSelectAll}
+            />
+          </TableHead>
+          <TableHead className="w-16">序号</TableHead>
+          <TableHead>URL</TableHead>
+          <TableHead>标题</TableHead>
+          <TableHead>状态码</TableHead>
+          <TableHead>Server</TableHead>
+          <TableHead>技术栈</TableHead>
+          <TableHead>指纹</TableHead>
+          <TableHead>时间</TableHead>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {results.length === 0 ? (
+          <TableRow>
+            <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">
+              {resultsLoading ? '加载中...' : '暂无数据'}
+            </TableCell>
+          </TableRow>
+        ) : (
+          results.map((item: Record<string, unknown>, index: number) => (
+            <TableRow 
+              key={item.id as string}
+              className={cn(selectedRows.includes(item.id as string) && 'bg-muted/50')}
+            >
+              <TableCell>
+                <Checkbox 
+                  checked={selectedRows.includes(item.id as string)}
+                  onCheckedChange={() => toggleSelectRow(item.id as string)}
+                />
+              </TableCell>
+              <TableCell className="text-muted-foreground">{(page - 1) * pageSize + index + 1}</TableCell>
+              <TableCell>
+                <a 
+                  href={item.url as string} 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className="text-primary hover:underline flex items-center gap-1 max-w-xs truncate"
+                >
+                  {item.url as string}
+                  <ExternalLink className="h-3 w-3 flex-shrink-0" />
+                </a>
+              </TableCell>
+              <TableCell className="max-w-[200px] truncate" title={item.title as string}>
+                {item.title as string || '-'}
+              </TableCell>
+              <TableCell>
+                <Badge variant={
+                  (item.status_code as number) >= 200 && (item.status_code as number) < 300 ? 'default' :
+                  (item.status_code as number) >= 300 && (item.status_code as number) < 400 ? 'secondary' :
+                  (item.status_code as number) >= 400 ? 'destructive' : 'outline'
+                }>
+                  {item.status_code as number || '-'}
+                </Badge>
+              </TableCell>
+              <TableCell className="text-muted-foreground">{item.server as string || '-'}</TableCell>
+              <TableCell>
+                {(item.technologies as string[])?.slice(0, 3).map((tech: string) => (
+                  <Badge key={tech} variant="outline" className="mr-1 text-xs">{tech}</Badge>
+                ))}
+              </TableCell>
+              <TableCell>
+                {(item.fingerprints as string[])?.slice(0, 2).map((fp: string) => (
+                  <Badge key={fp} variant="secondary" className="mr-1 text-xs">{fp}</Badge>
                 ))}
               </TableCell>
               <TableCell className="text-muted-foreground">{formatDate(item.createdAt as string)}</TableCell>
@@ -1033,10 +1057,22 @@ export default function TaskDetailPage() {
               </Button>
             )}
             {task.status === 'completed' && (
-              <Button variant="outline">
-                <RefreshCw className="h-4 w-4 mr-2" />
-                重新扫描
-              </Button>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" disabled={isOperating}>
+                    <RefreshCw className="h-4 w-4 mr-2" />
+                    重新扫描
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent>
+                  <DropdownMenuItem onClick={() => rescanMutation.mutate(false)}>
+                    继续未完成部分
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => rescanMutation.mutate(true)}>
+                    从头开始扫描
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             )}
             <AlertDialog>
               <AlertDialogTrigger asChild>

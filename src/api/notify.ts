@@ -1,60 +1,45 @@
 import api, { ApiResponse } from '@/lib/api'
 
-// 通知渠道类型
-export interface NotifyChannel {
-  id: string
-  name: string
+// 通知配置 - 匹配后端 NotifyConfig 结构
+export interface NotifyConfig {
   type: 'dingtalk' | 'feishu' | 'wechat' | 'email' | 'webhook'
   enabled: boolean
-  config: DingTalkConfig | FeishuConfig | WechatConfig | EmailConfig | WebhookConfig
-  createdAt: string
-  updatedAt: string
+  name: string
+  // DingTalk
+  dingtalk_webhook?: string
+  dingtalk_secret?: string
+  // Feishu
+  feishu_webhook?: string
+  feishu_secret?: string
+  // WeChat
+  wechat_webhook?: string
+  // Email
+  smtp_host?: string
+  smtp_port?: number
+  smtp_user?: string
+  smtp_password?: string
+  smtp_from?: string
+  email_to?: string[]
+  // Webhook
+  webhook_url?: string
+  webhook_method?: string
+  webhook_headers?: Record<string, string>
 }
 
-export interface DingTalkConfig {
-  webhook: string
-  secret?: string
-  keywords?: string[]
-}
-
-export interface FeishuConfig {
-  webhook: string
-  secret?: string
-}
-
-export interface WechatConfig {
-  webhook: string
-}
-
-export interface EmailConfig {
-  host: string
-  port: number
-  username: string
-  password: string
-  from: string
-  to: string[]
-  ssl: boolean
-}
-
-export interface WebhookConfig {
-  url: string
-  method: 'GET' | 'POST'
-  headers?: Record<string, string>
-  secret?: string
-}
-
-// 通知消息
-export interface NotifyMessage {
+// 通知历史
+export interface NotifyHistory {
   id: string
-  channelId: string
-  channelName: string
-  title: string
-  content: string
-  level: 'info' | 'warning' | 'error' | 'success'
-  status: 'pending' | 'sent' | 'failed'
+  message: {
+    level: string
+    title: string
+    content: string
+    timestamp: string
+    source: string
+  }
+  type: string
+  status: string
   error?: string
-  createdAt: string
-  sentAt?: string
+  timestamp: string
 }
 
 // 通知类型
@@ -65,43 +50,42 @@ export interface NotifyType {
 }
 
 export const notifyApi = {
-  // 获取通知渠道列表
-  getChannels: (): Promise<ApiResponse<{ list: NotifyChannel[]; total: number }>> =>
-    api.get('/notify/channels'),
+  // 获取通知配置列表
+  getConfigs: (): Promise<ApiResponse<NotifyConfig[]>> =>
+    api.get('/notify/configs'),
 
-  // 获取单个渠道
-  getChannel: (id: string): Promise<ApiResponse<NotifyChannel>> =>
-    api.get(`/notify/channels/${id}`),
+  // 添加通知配置
+  addConfig: (data: NotifyConfig): Promise<ApiResponse<null>> =>
+    api.post('/notify/configs', data),
 
-  // 创建渠道
-  createChannel: (data: Partial<NotifyChannel>): Promise<ApiResponse<NotifyChannel>> =>
-    api.post('/notify/channels', data),
+  // 更新通知配置
+  updateConfig: (data: NotifyConfig): Promise<ApiResponse<null>> =>
+    api.put('/notify/configs', data),
 
-  // 更新渠道
-  updateChannel: (id: string, data: Partial<NotifyChannel>): Promise<ApiResponse<NotifyChannel>> =>
-    api.put(`/notify/channels/${id}`, data),
+  // 删除通知配置
+  deleteConfig: (name: string, type: string): Promise<ApiResponse<null>> =>
+    api.delete('/notify/configs', { params: { name, type } }),
 
-  // 删除渠道
-  deleteChannel: (id: string): Promise<ApiResponse<null>> =>
-    api.delete(`/notify/channels/${id}`),
+  // 启用/禁用配置
+  enableConfig: (name: string, type: string, enabled: boolean): Promise<ApiResponse<null>> =>
+    api.post('/notify/configs/enable', { name, type, enabled }),
 
-  // 测试渠道
-  testChannel: (id: string): Promise<ApiResponse<{ success: boolean; message: string }>> =>
-    api.post(`/notify/channels/${id}/test`),
+  // 测试配置
+  testConfig: (config: NotifyConfig): Promise<ApiResponse<{ success: boolean; message: string }>> =>
+    api.post('/notify/test', config),
 
-  // 切换渠道状态
-  toggleChannel: (id: string, enabled: boolean): Promise<ApiResponse<null>> =>
-    api.put(`/notify/channels/${id}/toggle`, { enabled }),
+  // 发送通知
+  sendNotification: (data: { level: string; title: string; content: string; source: string }): Promise<ApiResponse<null>> =>
+    api.post('/notify/send', data),
 
   // 获取通知历史
-  getHistory: (params: { page: number; pageSize: number; channelId?: string; status?: string }): Promise<ApiResponse<{ list: NotifyMessage[]; total: number }>> =>
+  getHistory: (params?: { page?: number; limit?: number }): Promise<ApiResponse<NotifyHistory[]>> =>
     api.get('/notify/history', { params }),
 
-  // 获取通知类型
+  // 获取支持的通知类型
   getTypes: (): Promise<ApiResponse<NotifyType[]>> =>
     api.get('/notify/types'),
-
-  // 发送测试通知
-  sendTest: (data: { channelId: string; title: string; content: string; level: string }): Promise<ApiResponse<null>> =>
-    api.post('/notify/send', data),
 }
+
+// 为了向后兼容，保留旧的类型别名
+export type NotifyChannel = NotifyConfig

@@ -394,16 +394,6 @@ export default function POCsPage() {
       <div className="flex justify-between items-center">
         <h1 className="text-2xl font-bold">POC管理</h1>
         <div className="flex gap-2">
-          <Button 
-            variant="outline" 
-            size="sm" 
-            onClick={handleClearAll}
-            disabled={clearAllMutation.isPending || total === 0}
-            className="text-destructive hover:text-destructive"
-          >
-            <Trash2 className="h-4 w-4 mr-2" />
-            {clearAllMutation.isPending ? '清除中...' : '清除所有'}
-          </Button>
           <Button variant="outline" size="sm" onClick={() => refetch()}>
             <RefreshCw className="h-4 w-4 mr-2" />
             刷新
@@ -416,12 +406,12 @@ export default function POCsPage() {
                 <ChevronDown className="h-4 w-4 ml-2" />
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent>
-              <DropdownMenuItem onClick={handleImport}>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onSelect={(e) => { e.preventDefault(); handleImport(); }}>
                 <FileText className="h-4 w-4 mr-2" />
                 导入单个文件 (YAML/JSON)
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={handleZipImport}>
+              <DropdownMenuItem onSelect={(e) => { e.preventDefault(); handleZipImport(); }}>
                 <FileArchive className="h-4 w-4 mr-2" />
                 批量导入 (ZIP包)
               </DropdownMenuItem>
@@ -430,6 +420,16 @@ export default function POCsPage() {
           <Button size="sm" onClick={() => setIsCreateDialogOpen(true)}>
             <Plus className="h-4 w-4 mr-2" />
             新建POC
+          </Button>
+          <Button 
+            variant="outline" 
+            size="sm" 
+            onClick={handleClearAll}
+            disabled={clearAllMutation.isPending || total === 0}
+            className="text-destructive hover:text-destructive"
+          >
+            <Trash2 className="h-4 w-4 mr-2" />
+            {clearAllMutation.isPending ? '清除中...' : '清除所有'}
           </Button>
         </div>
       </div>

@@ -14,6 +14,7 @@ export type ResultType =
   | 'vuln' 
   | 'monitor' 
   | 'port'
+  | 'service'
 
 // 通用结果接口
 export interface ScanResult {
@@ -26,20 +27,6 @@ export interface ScanResult {
   source: string
   createdAt: string
   updatedAt: string
-}
-
-// 根域名结果
-export interface DomainResult {
-  id: string
-  domain: string
-  icp: string
-  company: string
-  icpType: string
-  province: string
-  registrar: string
-  tags: string[]
-  project: string
-  createdAt: string
 }
 
 // 子域名结果
@@ -138,6 +125,7 @@ export interface ResultStats {
   vuln: number
   monitor: number
   port: number
+  service: number
 }
 
 // 后端响应格式
@@ -194,15 +182,17 @@ function transformDataFields(data: Record<string, unknown>): Record<string, unkn
     result.ip = data.host
   }
   
-  // 子域名处理：优先使用 full_domain，其次使用 subdomain + domain 组合
+  // 子域名处理：优先使用 full_domain，其次使用 subdomain，再次使用 domain
   if (data.full_domain !== undefined) {
     result.subdomain = data.full_domain
     result.fullDomain = data.full_domain
-  } else if (data.subdomain !== undefined && data.domain !== undefined) {
-    result.subdomain = `${data.subdomain}.${data.domain}`
-    result.fullDomain = `${data.subdomain}.${data.domain}`
-  } else if (data.subdomain !== undefined) {
+  } else if (data.subdomain !== undefined && data.subdomain !== '') {
     result.subdomain = data.subdomain
+    result.fullDomain = data.subdomain
+  } else if (data.domain !== undefined && data.domain !== '') {
+    // domain 字段作为子域名（兼容旧数据）
+    result.subdomain = data.domain
+    result.fullDomain = data.domain
   }
   
   // IP 处理：如果是单个 ip 字符串，转换为 ips 数组
@@ -294,34 +284,6 @@ export const resultApi = {
       `/tasks/${taskId}/results/stats`
     ) as unknown as BackendResponse<Record<string, number>>
     return response
-  },
-
-  // 获取根域名结果
-  getDomainResults: async (
-    taskId: string,
-    params?: { page?: number; pageSize?: number; search?: string }
-  ) => {
-    const response = await api.get<BackendResponse<Record<string, unknown>[]>>(
-      `/tasks/${taskId}/results/domains`,
-      {
-        params: {
-          page: params?.page || 1,
-          size: params?.pageSize || 20,
-          search: params?.search,
-        }
-      }
-    ) as unknown as BackendResponse<Record<string, unknown>[]>
-    
-    return {
-      code: response.code,
-      message: response.message,
-      data: {
-        list: (response.data || []).map(transformResult) as unknown as DomainResult[],
-        total: response.total || 0,
-        page: response.page || 1,
-        pageSize: response.size || 20,
-      }
-    }
   },
 
   // 获取子域名结果

@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { notifyApi, NotifyChannel } from '@/api/notify'
+import { notifyApi, NotifyConfig, NotifyHistory } from '@/api/notify'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
@@ -37,14 +37,12 @@ import {
   Plus,
   RefreshCw,
   Trash2,
-  Settings,
   Send,
   MessageSquare,
   Mail,
   Webhook,
   CheckCircle,
   XCircle,
-  Clock,
 } from 'lucide-react'
 
 const channelTypeIcons: Record<string, React.ReactNode> = {
@@ -68,35 +66,34 @@ export default function NotifyPage() {
   const queryClient = useQueryClient()
   const [activeTab, setActiveTab] = useState('channels')
   const [showAddDialog, setShowAddDialog] = useState(false)
-  const [historyPage, setHistoryPage] = useState(1)
   
   // 新建渠道表单
   const [newChannel, setNewChannel] = useState({
     name: '',
-    type: 'dingtalk' as NotifyChannel['type'],
+    type: 'dingtalk' as NotifyConfig['type'],
     webhook: '',
     secret: '',
   })
 
-  // 获取渠道列表
-  const { data: channelsData, isLoading: channelsLoading, refetch: refetchChannels } = useQuery({
-    queryKey: ['notify-channels'],
-    queryFn: notifyApi.getChannels,
+  // 获取配置列表
+  const { data: configsData, isLoading: configsLoading, refetch: refetchConfigs } = useQuery({
+    queryKey: ['notify-configs'],
+    queryFn: notifyApi.getConfigs,
   })
 
   // 获取通知历史
   const { data: historyData, isLoading: historyLoading } = useQuery({
-    queryKey: ['notify-history', historyPage],
-    queryFn: () => notifyApi.getHistory({ page: historyPage, pageSize: 10 }),
+    queryKey: ['notify-history'],
+    queryFn: () => notifyApi.getHistory({ limit: 50 }),
     enabled: activeTab === 'history',
   })
 
-  // 创建渠道
+  // 创建配置
   const createMutation = useMutation({
-    mutationFn: notifyApi.createChannel,
+    mutationFn: notifyApi.addConfig,
     onSuccess: () => {
       toast({ title: '创建成功' })
-      queryClient.invalidateQueries({ queryKey: ['notify-channels'] })
+      queryClient.invalidateQueries({ queryKey: ['notify-configs'] })
       setShowAddDialog(false)
       setNewChannel({ name: '', type: 'dingtalk', webhook: '', secret: '' })
     },
@@ -105,27 +102,31 @@ export default function NotifyPage() {
     },
   })
 
-  // 删除渠道
+  // 删除配置
   const deleteMutation = useMutation({
-    mutationFn: notifyApi.deleteChannel,
+    mutationFn: ({ name, type }: { name: string; type: string }) => 
+      notifyApi.deleteConfig(name, type),
     onSuccess: () => {
       toast({ title: '删除成功' })
-      queryClient.invalidateQueries({ queryKey: ['notify-channels'] })
+      queryClient.invalidateQueries({ queryKey: ['notify-configs'] })
+    },
+    onError: () => {
+      toast({ title: '删除失败', variant: 'destructive' })
     },
   })
 
-  // 切换渠道状态
+  // 切换配置状态
   const toggleMutation = useMutation({
-    mutationFn: ({ id, enabled }: { id: string; enabled: boolean }) =>
-      notifyApi.toggleChannel(id, enabled),
+    mutationFn: ({ name, type, enabled }: { name: string; type: string; enabled: boolean }) =>
+      notifyApi.enableConfig(name, type, enabled),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['notify-channels'] })
+      queryClient.invalidateQueries({ queryKey: ['notify-configs'] })
     },
   })
 
-  // 测试渠道
+  // 测试配置
   const testMutation = useMutation({
-    mutationFn: notifyApi.testChannel,
+    mutationFn: notifyApi.testConfig,
     onSuccess: (res) => {
       if (res.data?.success) {
         toast({ title: '测试成功', description: '通知已发送' })
@@ -138,10 +139,8 @@ export default function NotifyPage() {
     },
   })
 
-  const channels = channelsData?.data?.list || []
-  const history = historyData?.data?.list || []
-  const historyTotal = historyData?.data?.total || 0
-  const historyTotalPages = Math.ceil(historyTotal / 10)
+  const configs = configsData?.data || []
+  const history = historyData?.data || []
 
   const handleCreate = () => {
     if (!newChannel.name || !newChannel.webhook) {
@@ -149,29 +148,59 @@ export default function NotifyPage() {
       return
     }
     
-    const config: Record<string, unknown> = { webhook: newChannel.webhook }
-    if (newChannel.secret) {
-      config.secret = newChannel.secret
-    }
-    
-    createMutation.mutate({
+    // 根据类型构建配置
+    const config: NotifyConfig = {
       name: newChannel.name,
       type: newChannel.type,
-      config: config as unknown as NotifyChannel['config'],
       enabled: true,
-    })
+    }
+
+    // 根据类型设置对应的 webhook 字段
+    switch (newChannel.type) {
+      case 'dingtalk':
+        config.dingtalk_webhook = newChannel.webhook
+        if (newChannel.secret) config.dingtalk_secret = newChannel.secret
+        break
+      case 'feishu':
+        config.feishu_webhook = newChannel.webhook
+        if (newChannel.secret) config.feishu_secret = newChannel.secret
+        break
+      case 'wechat':
+        config.wechat_webhook = newChannel.webhook
+        break
+      case 'webhook':
+        config.webhook_url = newChannel.webhook
+        config.webhook_method = 'POST'
+        break
+    }
+    
+    createMutation.mutate(config)
   }
 
   const getStatusBadge = (status: string) => {
     switch (status) {
-      case 'sent':
-        return <Badge className="bg-green-500"><CheckCircle className="h-3 w-3 mr-1" />已发送</Badge>
+      case 'success':
+        return <Badge className="bg-green-500"><CheckCircle className="h-3 w-3 mr-1" />成功</Badge>
       case 'failed':
         return <Badge variant="destructive"><XCircle className="h-3 w-3 mr-1" />失败</Badge>
-      case 'pending':
-        return <Badge variant="outline"><Clock className="h-3 w-3 mr-1" />待发送</Badge>
       default:
         return <Badge variant="outline">{status}</Badge>
+    }
+  }
+
+  // 获取配置的webhook地址（用于显示）
+  const getWebhook = (config: NotifyConfig): string => {
+    switch (config.type) {
+      case 'dingtalk':
+        return config.dingtalk_webhook || ''
+      case 'feishu':
+        return config.feishu_webhook || ''
+      case 'wechat':
+        return config.wechat_webhook || ''
+      case 'webhook':
+        return config.webhook_url || ''
+      default:
+        return ''
     }
   }
 
@@ -184,7 +213,7 @@ export default function NotifyPage() {
           <h1 className="text-2xl font-bold">通知管理</h1>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={() => refetchChannels()}>
+          <Button variant="outline" size="sm" onClick={() => refetchConfigs()}>
             <RefreshCw className="h-4 w-4 mr-2" />
             刷新
           </Button>
@@ -205,59 +234,54 @@ export default function NotifyPage() {
         {/* 渠道列表 */}
         <TabsContent value="channels" className="space-y-4">
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {channelsLoading ? (
+            {configsLoading ? (
               <div className="col-span-full text-center py-8 text-muted-foreground">
                 加载中...
               </div>
-            ) : channels.length === 0 ? (
+            ) : configs.length === 0 ? (
               <div className="col-span-full text-center py-8 text-muted-foreground">
                 暂无通知渠道，点击"添加渠道"创建
               </div>
             ) : (
-              channels.map((channel) => (
-                <Card key={channel.id}>
+              configs.map((config, index) => (
+                <Card key={`${config.name}-${config.type}-${index}`}>
                   <CardHeader className="pb-2">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
-                        {channelTypeIcons[channel.type]}
-                        <CardTitle className="text-base">{channel.name}</CardTitle>
+                        {channelTypeIcons[config.type]}
+                        <CardTitle className="text-base">{config.name}</CardTitle>
                       </div>
                       <Switch
-                        checked={channel.enabled}
+                        checked={config.enabled}
                         onCheckedChange={(checked) =>
-                          toggleMutation.mutate({ id: channel.id, enabled: checked })
+                          toggleMutation.mutate({ name: config.name, type: config.type, enabled: checked })
                         }
                       />
                     </div>
                     <CardDescription>
-                      {channelTypeLabels[channel.type]}
+                      {channelTypeLabels[config.type]}
                     </CardDescription>
                   </CardHeader>
                   <CardContent>
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs text-muted-foreground">
-                        创建于 {formatDate(channel.createdAt)}
-                      </span>
+                    <div className="text-xs text-muted-foreground mb-2 truncate">
+                      {getWebhook(config).substring(0, 50)}...
+                    </div>
+                    <div className="flex items-center justify-end">
                       <div className="flex gap-1">
                         <Button
                           variant="ghost"
                           size="icon"
-                          onClick={() => testMutation.mutate(channel.id)}
+                          onClick={() => testMutation.mutate(config)}
                           disabled={testMutation.isPending}
+                          title="测试"
                         >
                           <Send className="h-4 w-4" />
                         </Button>
                         <Button
                           variant="ghost"
                           size="icon"
-                          title="设置"
-                        >
-                          <Settings className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => deleteMutation.mutate(channel.id)}
+                          onClick={() => deleteMutation.mutate({ name: config.name, type: config.type })}
+                          title="删除"
                         >
                           <Trash2 className="h-4 w-4 text-destructive" />
                         </Button>
@@ -276,11 +300,11 @@ export default function NotifyPage() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>渠道</TableHead>
+                  <TableHead>类型</TableHead>
                   <TableHead>标题</TableHead>
                   <TableHead>级别</TableHead>
                   <TableHead>状态</TableHead>
-                  <TableHead>发送时间</TableHead>
+                  <TableHead>时间</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -297,48 +321,25 @@ export default function NotifyPage() {
                     </TableCell>
                   </TableRow>
                 ) : (
-                  history.map((msg) => (
-                    <TableRow key={msg.id}>
-                      <TableCell>{msg.channelName}</TableCell>
-                      <TableCell className="max-w-xs truncate">{msg.title}</TableCell>
+                  history.map((item: NotifyHistory) => (
+                    <TableRow key={item.id}>
                       <TableCell>
-                        <Badge variant={msg.level === 'error' ? 'destructive' : 'outline'}>
-                          {msg.level}
+                        <Badge variant="outline">{channelTypeLabels[item.type] || item.type}</Badge>
+                      </TableCell>
+                      <TableCell className="max-w-xs truncate">{item.message?.title}</TableCell>
+                      <TableCell>
+                        <Badge variant={item.message?.level === 'warning' ? 'destructive' : 'outline'}>
+                          {item.message?.level}
                         </Badge>
                       </TableCell>
-                      <TableCell>{getStatusBadge(msg.status)}</TableCell>
-                      <TableCell>{formatDate(msg.sentAt || msg.createdAt)}</TableCell>
+                      <TableCell>{getStatusBadge(item.status)}</TableCell>
+                      <TableCell>{formatDate(item.timestamp)}</TableCell>
                     </TableRow>
                   ))
                 )}
               </TableBody>
             </Table>
           </div>
-
-          {/* 分页 */}
-          {historyTotalPages > 1 && (
-            <div className="flex justify-center gap-2 mt-4">
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={historyPage === 1}
-                onClick={() => setHistoryPage(historyPage - 1)}
-              >
-                上一页
-              </Button>
-              <span className="py-2 px-4 text-sm">
-                {historyPage} / {historyTotalPages}
-              </span>
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={historyPage === historyTotalPages}
-                onClick={() => setHistoryPage(historyPage + 1)}
-              >
-                下一页
-              </Button>
-            </div>
-          )}
         </TabsContent>
       </Tabs>
 
@@ -361,7 +362,7 @@ export default function NotifyPage() {
               <Label>渠道类型</Label>
               <Select
                 value={newChannel.type}
-                onValueChange={(value) => setNewChannel({ ...newChannel, type: value as NotifyChannel['type'] })}
+                onValueChange={(value) => setNewChannel({ ...newChannel, type: value as NotifyConfig['type'] })}
               >
                 <SelectTrigger>
                   <SelectValue />
@@ -370,7 +371,6 @@ export default function NotifyPage() {
                   <SelectItem value="dingtalk">钉钉</SelectItem>
                   <SelectItem value="feishu">飞书</SelectItem>
                   <SelectItem value="wechat">企业微信</SelectItem>
-                  <SelectItem value="email">邮件</SelectItem>
                   <SelectItem value="webhook">WebHook</SelectItem>
                 </SelectContent>
               </Select>
@@ -383,14 +383,16 @@ export default function NotifyPage() {
                 onChange={(e) => setNewChannel({ ...newChannel, webhook: e.target.value })}
               />
             </div>
-            <div className="space-y-2">
-              <Label>签名密钥 (可选)</Label>
-              <Input
-                placeholder="输入签名密钥"
-                value={newChannel.secret}
-                onChange={(e) => setNewChannel({ ...newChannel, secret: e.target.value })}
-              />
-            </div>
+            {(newChannel.type === 'dingtalk' || newChannel.type === 'feishu') && (
+              <div className="space-y-2">
+                <Label>签名密钥 (可选)</Label>
+                <Input
+                  placeholder="输入签名密钥"
+                  value={newChannel.secret}
+                  onChange={(e) => setNewChannel({ ...newChannel, secret: e.target.value })}
+                />
+              </div>
+            )}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowAddDialog(false)}>

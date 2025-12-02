@@ -68,6 +68,13 @@ export default function TaskCreatePage() {
       rateLimit: 1000,
       timeout: 30,
       concurrent: 10,
+      // 第三方 API 配置
+      use_thirdparty: false,
+      thirdparty_sources: [] as string[],
+      fofa_email: '',
+      fofa_key: '',
+      hunter_key: '',
+      quake_key: '',
     } as TaskConfig,
   })
 
@@ -357,6 +364,128 @@ export default function TaskCreatePage() {
               </div>
             </CardContent>
           </Card>
+
+          {/* 第三方 API 配置 - 仅在选择子域名枚举时显示 */}
+          {formData.config.scanTypes?.includes('subdomain') && (
+            <Card>
+              <CardHeader>
+                <CardTitle>第三方 API 配置</CardTitle>
+                <CardDescription>配置 FOFA/Hunter/Quake 等 API 收集更多子域名</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="flex items-center space-x-2">
+                  <Checkbox
+                    id="use_thirdparty"
+                    checked={formData.config.use_thirdparty}
+                    onCheckedChange={(checked) =>
+                      setFormData({
+                        ...formData,
+                        config: { ...formData.config, use_thirdparty: checked as boolean },
+                      })
+                    }
+                  />
+                  <Label htmlFor="use_thirdparty">启用第三方 API 收集子域名</Label>
+                </div>
+
+                {formData.config.use_thirdparty && (
+                  <div className="space-y-4 pt-2">
+                    {/* 数据源选择 */}
+                    <div className="space-y-2">
+                      <Label>数据源（不选则使用全部已配置的）</Label>
+                      <div className="flex flex-wrap gap-2">
+                        {['fofa', 'hunter', 'quake', 'crtsh'].map((source) => (
+                          <Badge
+                            key={source}
+                            variant={formData.config.thirdparty_sources?.includes(source) ? 'default' : 'outline'}
+                            className="cursor-pointer"
+                            onClick={() => {
+                              const current = formData.config.thirdparty_sources || []
+                              const newSources = current.includes(source)
+                                ? current.filter((s) => s !== source)
+                                : [...current, source]
+                              setFormData({
+                                ...formData,
+                                config: { ...formData.config, thirdparty_sources: newSources },
+                              })
+                            }}
+                          >
+                            {source.toUpperCase()}
+                          </Badge>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* FOFA 配置 */}
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="space-y-1">
+                        <Label className="text-xs">FOFA Email</Label>
+                        <Input
+                          placeholder="your@email.com"
+                          value={formData.config.fofa_email || ''}
+                          onChange={(e) =>
+                            setFormData({
+                              ...formData,
+                              config: { ...formData.config, fofa_email: e.target.value },
+                            })
+                          }
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs">FOFA Key</Label>
+                        <Input
+                          type="password"
+                          placeholder="API Key"
+                          value={formData.config.fofa_key || ''}
+                          onChange={(e) =>
+                            setFormData({
+                              ...formData,
+                              config: { ...formData.config, fofa_key: e.target.value },
+                            })
+                          }
+                        />
+                      </div>
+                    </div>
+
+                    {/* Hunter 配置 */}
+                    <div className="space-y-1">
+                      <Label className="text-xs">Hunter API Key</Label>
+                      <Input
+                        type="password"
+                        placeholder="Hunter API Key"
+                        value={formData.config.hunter_key || ''}
+                        onChange={(e) =>
+                          setFormData({
+                            ...formData,
+                            config: { ...formData.config, hunter_key: e.target.value },
+                          })
+                        }
+                      />
+                    </div>
+
+                    {/* Quake 配置 */}
+                    <div className="space-y-1">
+                      <Label className="text-xs">Quake API Key</Label>
+                      <Input
+                        type="password"
+                        placeholder="Quake API Key"
+                        value={formData.config.quake_key || ''}
+                        onChange={(e) =>
+                          setFormData({
+                            ...formData,
+                            config: { ...formData.config, quake_key: e.target.value },
+                          })
+                        }
+                      />
+                    </div>
+
+                    <p className="text-xs text-muted-foreground">
+                      提示：CrtSh 免费无需配置，其他 API 需要填写对应的密钥
+                    </p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
         </div>
 
         {/* 右侧 */}

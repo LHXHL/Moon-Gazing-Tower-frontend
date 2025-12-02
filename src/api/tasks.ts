@@ -81,6 +81,13 @@ export interface TaskConfig {
   enabledPlugins?: string[]
   pocIds?: string[]
   customParams?: Record<string, unknown>
+  // 第三方 API 配置
+  use_thirdparty?: boolean
+  thirdparty_sources?: string[]
+  fofa_email?: string
+  fofa_key?: string
+  hunter_key?: string
+  quake_key?: string
 }
 
 export interface TaskResult {
@@ -161,6 +168,13 @@ export const taskApi = {
       poc_ids: data.config.pocIds,
       enabled_plugins: data.config.enabledPlugins,
       custom_params: data.config.customParams,
+      // 第三方 API 配置
+      use_thirdparty: data.config.use_thirdparty,
+      thirdparty_sources: data.config.thirdparty_sources,
+      fofa_email: data.config.fofa_email,
+      fofa_key: data.config.fofa_key,
+      hunter_key: data.config.hunter_key,
+      quake_key: data.config.quake_key,
     }
     
     const payload = {
@@ -196,6 +210,10 @@ export const taskApi = {
 
   retryTask: (id: string): Promise<ApiResponse<Task>> =>
     api.post(`/tasks/${id}/retry`),
+
+  // 重新扫描任务（默认继续未完成部分，fromScratch=true 则从头开始）
+  rescanTask: (id: string, fromScratch: boolean = false): Promise<ApiResponse<Task>> =>
+    api.post(`/tasks/${id}/rescan`, { from_scratch: fromScratch }),
 
   // Task Logs
   getTaskLogs: async (taskId: string, params?: PaginationParams): Promise<PaginatedResponse<TaskLog>> => {
